@@ -27,15 +27,15 @@ func main() {
 
 	_, err = BizClient.Check(ctx, &service.Nothing{})
 	checkError(err)
-	fmt.Println("Call Check ")
+	fmt.Println("Call Check from client")
 
 	_, err = BizClient.Add(ctx, &service.Nothing{})
 	checkError(err)
-	fmt.Println("Call Add ")
+	fmt.Println("Call Add from client ")
 
 	_, err = BizClient.Test(ctx, &service.Nothing{})
 	checkError(err)
-	fmt.Println("Call Test ")
+	fmt.Println("Call Test from client ")
 
 }
 
