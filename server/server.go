@@ -2,6 +2,7 @@ package main
 
 import (
 	"coursera_microservice/service"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -14,61 +15,113 @@ import (
 	"google.golang.org/grpc"
 )
 
-//Stats ...
+func (s *Server) adminInterceptor() grpc.StreamServerInterceptor {
 
-func methodCountInterceptor() grpc.UnaryServerInterceptor {
-	var Stats = &service.Stat{
-		Timestamp:  time.Now().Unix(),
-		ByMethod:   make(map[string]uint64),
-		ByConsumer: make(map[string]uint64),
+	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+
+		md, ok := metadata.FromIncomingContext(ss.Context())
+		cons := md["consumer"]
+		consumer := strings.Join(cons, "")
+
+		if info.FullMethod == "/service.Admin/Logging" {
+			s.IsLogging = true
+
+		}
+
+		if !ok {
+			fmt.Println("There is no any context for user authentication")
+			return errors.New("There is no any context for user authentication")
+		}
+
+		if consumer != "stat" && strings.Contains(info.FullMethod, "Statistics") || consumer != "logger" && strings.Contains(info.FullMethod, "Logging") {
+			fmt.Println("This user cant call method ", info.FullMethod)
+			return errors.New("Authentication error")
+		}
+
+		return handler(srv, ss) //здесь происходит завершение logging?
+
 	}
+}
+func (s *Server) methodCountInterceptor() grpc.UnaryServerInterceptor {
+
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler,
-	) (interface{}, error) {
-		reply, err := handler(ctx, req)
-		Stats.Timestamp = time.Now().Unix()
+	) (some interface{}, err error) {
+		fmt.Println("Client calling method : ", info.FullMethod)
+		s.Stat.Timestamp = time.Now().Unix()
 
 		md, ok := metadata.FromIncomingContext(ctx)
 		cons := md["consumer"]
 		consumer := strings.Join(cons, "")
 
 		if !ok {
-			fmt.Println("There is no any context")
+			fmt.Println("There is no any context for user authentication")
+			return nil, errors.New("There is no any context for user authentication")
 		}
 
-		if _, ok := Stats.ByConsumer[consumer]; ok {
-			Stats.ByConsumer[consumer]++
+		if consumer == "biz_user" && strings.Contains(info.FullMethod, "Test") {
+			fmt.Println("This user cant call method Test")
+			return nil, errors.New("Authentication error")
+		}
+
+		if _, ok := s.Stat.ByConsumer[consumer]; ok {
+			s.Stat.ByConsumer[consumer]++
 		} else {
-			Stats.ByConsumer[consumer] = 1
+			s.Stat.ByConsumer[consumer] = 1
 		}
 
-		if _, ok := Stats.ByMethod[info.FullMethod]; ok {
-			Stats.ByMethod[info.FullMethod]++
+		if _, ok := s.Stat.ByMethod[info.FullMethod]; ok {
+			s.Stat.ByMethod[info.FullMethod]++
 
 		} else {
-			Stats.ByMethod[info.FullMethod] = 1
+			s.Stat.ByMethod[info.FullMethod] = 1
 		}
-		fmt.Println(Stats)
 
-		return reply, err
+		return handler(ctx, req)
+		/*
+			switch s.IsLogging {
+			case false:
+				return handler(ctx, req)
+			case true:
+				s.Event.Timestamp = time.Now().Unix()
+				s.Event.Consumer = consumer
+				s.Event.Method = info.FullMethod
+				md, ok = metadata.FromIncomingContext(ctx)
+				if !ok {
+					fmt.Println("Cant find client host data")
+				}
+				s.Event.Host = strings.Join(md[":authority"], "")
+				fmt.Printf("Struct for logging service: \n%+v", s.Event)
+
+				s.WG.Add(1)
+				go func() {
+					s.QueryCh <- struct{}{}
+
+					s.WG.Done()
+
+				}()
+				s.WG.Wait()
+			}
+			return handler(ctx, req)
+		}*/
 
 	}
 }
+
 func main() {
+	s := &Server{
+		Event: service.Event{Timestamp: 0, Consumer: "", Method: "", Host: ""},
+		Stat:  service.Stat{Timestamp: 0, ByConsumer: map[string]uint64{}, ByMethod: map[string]uint64{}},
+	}
 	listener, err := net.Listen("tcp", "127.0.0.1:8081")
 	checkError(err)
 
-	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(methodCountInterceptor()))
-	service.RegisterBizServer(grpcServer, NewClient())
+	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(s.methodCountInterceptor()), grpc.StreamInterceptor(s.adminInterceptor()))
+	service.RegisterBizServer(grpcServer, s)
+	service.RegisterAdminServer(grpcServer, s)
 	fmt.Println("starting server at :8081")
 
-	/*go func() {
-		for {
-			time.Sleep(time.Second * 10)
-			fmt.Println(Stats)
-		}
-	}()*/
-
 	grpcServer.Serve(listener)
+
 }
 
 func checkError(err error) {

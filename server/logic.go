@@ -4,40 +4,78 @@ import (
 	"coursera_microservice/service"
 	"fmt"
 	"sync"
+	"time"
 
 	"golang.org/x/net/context"
 )
 
-//Client ...
-type Client struct {
-	name  string
-	token string
-	m     sync.RWMutex
+//Server ...
+type Server struct {
+	service.Event
+	service.Stat
+	EventCh   chan *service.Event
+	IsLogging bool
+	QueryCh   chan struct{}
+	WG        sync.WaitGroup
 }
 
-//NewClient ...
-func NewClient() *Client {
-	return &Client{}
+/*func (s *Server) init() {
+	s.QueryCh = make(chan struct{}, 1)
 
-}
+}*/
 
 //Check ...
-func (c *Client) Check(ctx context.Context, in *service.Nothing) (out *service.Nothing, err error) {
-	fmt.Println("Call Check ")
+func (s *Server) Check(ctx context.Context, in *service.Nothing) (out *service.Nothing, err error) {
+
 	return &service.Nothing{Dummy: true}, nil
 
 }
 
 //Add ...
-func (c *Client) Add(ctx context.Context, in *service.Nothing) (out *service.Nothing, err error) {
-	fmt.Println("Call Add ")
+func (s *Server) Add(ctx context.Context, in *service.Nothing) (out *service.Nothing, err error) {
+
 	return &service.Nothing{Dummy: true}, nil
 
 }
 
 //Test ...
-func (c *Client) Test(ctx context.Context, in *service.Nothing) (out *service.Nothing, err error) {
-	fmt.Println("Call Test ")
-	return &service.Nothing{Dummy: true}, nil
+func (s *Server) Test(ctx context.Context, in *service.Nothing) (out *service.Nothing, err error) {
 
+	return &service.Nothing{Dummy: true}, nil
+}
+
+// Statistics ...
+func (s *Server) Statistics(in *service.StatInterval, outstream service.Admin_StatisticsServer) (err error) {
+	for {
+		time.Sleep(time.Duration(in.IntervalSeconds) * time.Second)
+		err = outstream.Send(&s.Stat)
+
+		if err != nil {
+			fmt.Println("service closed")
+			break
+		}
+
+	}
+
+	return err
+}
+
+//Logging ...
+func (s *Server) Logging(in *service.Nothing, outstream service.Admin_LoggingServer) (err error) {
+	go func() {
+
+		for {
+			<-s.QueryCh
+			fmt.Println(s.Event)
+			err = outstream.Send(&s.Event)
+			if err != nil {
+				fmt.Println("service closed", err)
+				return
+
+			}
+
+		}
+
+	}()
+	return nil
 }

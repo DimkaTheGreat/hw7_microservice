@@ -11,36 +11,39 @@ import (
 )
 
 func main() {
+
 	conn, err := grpc.Dial("127.0.0.1:8081", grpc.WithInsecure())
 
-	checkError(err)
+	if err != nil {
+		fmt.Println(err)
+	}
 	defer conn.Close()
 
 	BizClient := service.NewBizClient(conn)
 
-	userName := "Pisya"
+	consumerName := "biz_user"
 
-	md := metadata.New(map[string]string{
-		"consumer": userName})
-
-	ctx := metadata.NewOutgoingContext(context.Background(), md)
+	ctx := metadata.AppendToOutgoingContext(context.Background(), "consumer", consumerName)
 
 	_, err = BizClient.Check(ctx, &service.Nothing{})
-	checkError(err)
-	fmt.Println("Call Check from client")
-
-	_, err = BizClient.Add(ctx, &service.Nothing{})
-	checkError(err)
-	fmt.Println("Call Add from client ")
-
-	_, err = BizClient.Test(ctx, &service.Nothing{})
-	checkError(err)
-	fmt.Println("Call Test from client ")
-
-}
-
-func checkError(err error) {
 	if err != nil {
 		fmt.Println(err)
+	} else {
+		fmt.Println("Call Check from client")
 	}
+
+	_, err = BizClient.Add(ctx, &service.Nothing{})
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		fmt.Println("Call Add from client")
+	}
+
+	/*_, err = BizClient.Test(ctx, &service.Nothing{})
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		fmt.Println("Call Test from client")
+	}*/
+
 }
