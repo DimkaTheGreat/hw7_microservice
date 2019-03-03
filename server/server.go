@@ -38,7 +38,7 @@ func (s *Server) adminInterceptor() grpc.StreamServerInterceptor {
 			return errors.New("Authentication error")
 		}
 
-		return handler(srv, ss) //здесь происходит завершение logging?
+		return handler(srv, ss)
 
 	}
 }
@@ -47,7 +47,6 @@ func (s *Server) methodCountInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler,
 	) (some interface{}, err error) {
 		fmt.Println("Client calling method : ", info.FullMethod)
-		s.Stat.Timestamp = time.Now().Unix()
 
 		md, ok := metadata.FromIncomingContext(ctx)
 		cons := md["consumer"]
@@ -76,34 +75,24 @@ func (s *Server) methodCountInterceptor() grpc.UnaryServerInterceptor {
 			s.Stat.ByMethod[info.FullMethod] = 1
 		}
 
-		return handler(ctx, req)
-		/*
-			switch s.IsLogging {
-			case false:
-				return handler(ctx, req)
-			case true:
-				s.Event.Timestamp = time.Now().Unix()
-				s.Event.Consumer = consumer
-				s.Event.Method = info.FullMethod
-				md, ok = metadata.FromIncomingContext(ctx)
-				if !ok {
-					fmt.Println("Cant find client host data")
-				}
-				s.Event.Host = strings.Join(md[":authority"], "")
-				fmt.Printf("Struct for logging service: \n%+v", s.Event)
-
-				s.WG.Add(1)
-				go func() {
-					s.QueryCh <- struct{}{}
-
-					s.WG.Done()
-
-				}()
-				s.WG.Wait()
-			}
+		switch s.IsLogging {
+		case false:
 			return handler(ctx, req)
-		}*/
+		case true:
+			s.Event.Timestamp = time.Now().Unix()
+			s.Event.Consumer = consumer
+			s.Event.Method = info.FullMethod
+			md, ok = metadata.FromIncomingContext(ctx)
+			if !ok {
+				fmt.Println("Cant find client host data")
+			}
+			s.Event.Host = strings.Join(md[":authority"], "")
 
+			s.EventCh <- &s.Event
+
+			return handler(ctx, req)
+		}
+		return handler(ctx, req)
 	}
 }
 
@@ -112,6 +101,7 @@ func main() {
 		Event: service.Event{Timestamp: 0, Consumer: "", Method: "", Host: ""},
 		Stat:  service.Stat{Timestamp: 0, ByConsumer: map[string]uint64{}, ByMethod: map[string]uint64{}},
 	}
+	s.init()
 	listener, err := net.Listen("tcp", "127.0.0.1:8081")
 	checkError(err)
 

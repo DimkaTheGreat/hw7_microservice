@@ -28,15 +28,16 @@ func main() {
 	client, err := statClient.Statistics(newCtx, interval)
 
 	for {
-		time.Sleep(5 * time.Second)
+
 		statistic, err := client.Recv()
 		if err == io.EOF {
-			continue
+
 		}
 		if err != nil {
 			fmt.Println(err)
+			break
 		}
-
+		statistic.Timestamp = time.Now().Unix()
 		fmt.Println(statistic)
 
 	}

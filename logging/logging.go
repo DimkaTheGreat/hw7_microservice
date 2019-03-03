@@ -29,12 +29,16 @@ func main() {
 	for {
 
 		event, err := client.Recv()
+		if event == nil {
+			continue
+		}
 		if err == io.EOF {
-			fmt.Println(err)
+			continue
 		}
 
 		if err != nil {
 			fmt.Println(err)
+			break
 		}
 		fmt.Println(event)
 

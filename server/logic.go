@@ -19,10 +19,10 @@ type Server struct {
 	WG        sync.WaitGroup
 }
 
-/*func (s *Server) init() {
-	s.QueryCh = make(chan struct{}, 1)
+func (s *Server) init() {
 
-}*/
+	s.EventCh = make(chan *service.Event)
+}
 
 //Check ...
 func (s *Server) Check(ctx context.Context, in *service.Nothing) (out *service.Nothing, err error) {
@@ -48,6 +48,7 @@ func (s *Server) Test(ctx context.Context, in *service.Nothing) (out *service.No
 func (s *Server) Statistics(in *service.StatInterval, outstream service.Admin_StatisticsServer) (err error) {
 	for {
 		time.Sleep(time.Duration(in.IntervalSeconds) * time.Second)
+
 		err = outstream.Send(&s.Stat)
 
 		if err != nil {
@@ -62,20 +63,20 @@ func (s *Server) Statistics(in *service.StatInterval, outstream service.Admin_St
 
 //Logging ...
 func (s *Server) Logging(in *service.Nothing, outstream service.Admin_LoggingServer) (err error) {
-	go func() {
+	for {
+		select {
+		case ev := <-s.EventCh:
+			err = outstream.Send(ev)
+			fmt.Println("struct sended to logging client", ev)
+		}
+		if err != nil {
+			fmt.Println("service closed", err)
+			s.IsLogging = false
 
-		for {
-			<-s.QueryCh
-			fmt.Println(s.Event)
-			err = outstream.Send(&s.Event)
-			if err != nil {
-				fmt.Println("service closed", err)
-				return
-
-			}
+			return
 
 		}
 
-	}()
-	return nil
+	}
+
 }
